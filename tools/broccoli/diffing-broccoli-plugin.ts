@@ -114,6 +114,11 @@ class DiffingPluginWrapper implements BroccoliTree {
 
   private init() {
     if (!this.initialized) {
+      console.log(`[DiffingBroccoliPlugin -> ${this.description}]
+  inputPaths: ${this.inputPaths ? this.inputPaths.join('\n              ') : this.inputPath}
+  outputPath: ${this.outputPath}
+  cachePath:  ${this.cachePath}
+`);
       let includeExtensions = this.pluginClass.includeExtensions || [];
       let excludeExtensions = this.pluginClass.excludeExtensions || [];
       let description = this.description;

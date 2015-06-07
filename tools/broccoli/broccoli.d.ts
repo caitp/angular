@@ -53,6 +53,8 @@ interface BroccoliTree {
   inputTree?: BroccoliTree;
   inputTrees?: BroccoliTree[];
 
+  directory?: string;
+
   /**
    * Description or name of the plugin used for reporting.
    *

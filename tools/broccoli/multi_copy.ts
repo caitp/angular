@@ -16,6 +16,12 @@ export interface MultiCopyOptions {
   exclude?: string[];
 }
 
+function exists(filepath) {
+  try { return !!fs.lstatSync(filepath); }
+  catch (e) { if (e.code !== "ENOENT") throw e; }
+  return false;
+}
+
 /**
  * A writer that copies an input file from an input path into (potentially many) output locations
  * given by glob patterns, .
@@ -27,7 +33,8 @@ export class MultiCopy extends Writer {
     return readTree(this.inputTree)
         .then((inputPath: string) => {
           var fileName = path.basename(this.options.srcPath);
-          var data = fs.readFileSync(path.join(inputPath, this.options.srcPath), 'utf-8');
+          var inputFileName = path.join(inputPath, this.options.srcPath);
+          var data = fs.readFileSync(inputFileName, 'utf-8');
 
           this.options.targetPatterns.forEach(pattern => {
             var paths: string[] = glob.sync(pattern);
@@ -39,6 +46,13 @@ export class MultiCopy extends Writer {
               var folder = path.join(destDir, p);
               fsx.mkdirsSync(folder);
               var outputPath = path.join(folder, fileName);
+              let log = true;//outputPath.indexOf('change_detection/url_params_to_form.js') > -1
+              if (log) {
+                console.log(`[MultiCopy]
+  Copying ${inputFileName} to ${outputPath}
+`);
+              }
+              try { fs.unlinkSync(outputPath); } catch (e) {}
               fs.writeFileSync(outputPath, data);
             });
           });

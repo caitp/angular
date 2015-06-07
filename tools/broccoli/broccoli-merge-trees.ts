@@ -8,9 +8,18 @@ interface MergeTreesOptions {
   overwrite?: boolean;
 }
 
-function outputFileSync(sourcePath, destPath) {
+function directoryExists(dirname, cache) {
+  if (cache[dirname]) return true;
+  try { return cache[dirname] = fs.lstatSync(dirname).isDirectory(); }
+  catch (e) { if (e.code !== "ENOENT") throw e; }
+  return cache[dirname] = false;
+}
+
+function outputFileSync(sourcePath, destPath, cache) {
   let dirname = path.dirname(destPath);
-  fse.mkdirsSync(dirname, {fs: fs});
+  if (!directoryExists(dirname, cache)) {
+    fse.mkdirsSync(dirname, {fs: fs});
+  }
   symlinkOrCopySync(sourcePath, destPath);
 }
 
@@ -18,6 +27,7 @@ export class MergeTrees implements DiffingBroccoliPlugin {
   private pathCache: {[key: string]: number[]} = Object.create(null);
   public options: MergeTreesOptions;
   private firstBuild: boolean = true;
+  private inputPathsCache: {[key: string]: number} = Object.create(null);
 
   constructor(public inputPaths: string[], public cachePath: string,
               options: MergeTreesOptions = {}) {
@@ -44,6 +54,7 @@ export class MergeTrees implements DiffingBroccoliPlugin {
 
     if (this.firstBuild) {
       // Build initial cache
+      this.inputPaths.forEach((dir, index) => this.inputPathsCache[dir] = index);
       treeDiffs.reverse().forEach((treeDiff: DiffResult, index) => {
         index = treeDiffs.length - 1 - index;
         treeDiff.changedPaths.forEach((changedPath) => {
@@ -100,18 +111,80 @@ export class MergeTrees implements DiffingBroccoliPlugin {
         });
       });
     }
+    let cache: {[key: string]: boolean} = Object.create(null);
+    let lstat = (file) => {
+      try { return fs.lstatSync(file); } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+      }
+      return undefined;
+    }
 
-    pathsToRemove.forEach((destPath) => fse.removeSync(destPath));
+    let rpath = (file) => {
+      let stat;
+      let parts = [file];
+      while ((stat = lstat(file)) && stat.isSymbolicLink()) {
+        file = fs.readlinkSync(file);
+        parts.push("  -> " + file);
+      }
+      if (stat === undefined) parts.push("  -> <dead link>");
+      console.log(`[MergeTrees]
+${parts.join('\n')}
+`);
+      return file;
+    };
+
+    let exists = (file) => {
+      try { return !!fs.statSync(file); }
+      catch (e) { if (e.code !== "ENOENT") throw e; }
+      return false;
+    }
+
+    let remove = (destPath) => {
+      let isLink = (filepath) => {
+        try {
+          return fs.lstatSync(filepath).
+              isSymbolicLink();
+        } catch (e) { if (e.code !== "ENOENT") throw e; }
+        return false;
+      }
+      let log = true;//destPath.indexOf('change_detection/url_params_to_form.js') > -1;
+      if (log && isLink(destPath) && !exists(destPath)) {
+        console.log(`[MergeTrees]
+  dead symlink ${destPath} (${rpath(destPath)})
+`);
+          fs.unlinkSync(destPath);
+          return;
+        }
+      if (log) console.log(`[MergeTrees]
+  Removing ${destPath}
+`);
+      let realpath = fs.realpathSync(destPath);
+      fs.unlinkSync(destPath);
+      if (log && !exists(realpath)) console.log(`[MergeTrees]
+  For some reason, ${realpath} was deleted too!
+`);
+    };
+
+    pathsToRemove.forEach(remove);
     pathsToEmit.forEach((emittedPath) => {
+      let log = true;//emittedPath.indexOf('change_detection/url_params_to_form.js') > -1;
       let cache = this.pathCache[emittedPath];
       let destPath = path.join(this.cachePath, emittedPath);
       let sourceIndex = cache[cache.length - 1];
       let sourceInputPath = this.inputPaths[sourceIndex];
       let sourcePath = path.join(sourceInputPath, emittedPath);
-      if (cache.length > 1) {
-        fse.removeSync(destPath);
+      if (this.inputPathsCache[sourceInputPath] !== sourceIndex) {
+        throw new Error(`\n[MergeTrees] inputPaths changed.
+`);
       }
-      outputFileSync(sourcePath, destPath);
+      if (cache.length > 1) {
+        remove(destPath);
+      }
+      if (log) console.log(`[MergeTrees]
+  Outputting ${sourcePath}
+    -> ${destPath}
+`);
+      outputFileSync(sourcePath, destPath, cache);
     });
   }
 }

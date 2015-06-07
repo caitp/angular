@@ -11,6 +11,7 @@ var path = require('path');
 var renderLodashTemplate = require('broccoli-lodash');
 var replace = require('broccoli-replace');
 var stew = require('broccoli-stew');
+import map from '../broccoli-map';
 import ts2dart from '../broccoli-ts2dart';
 import dartfmt from '../broccoli-dartfmt';
 
@@ -79,16 +80,21 @@ function fixDartFolderLayout(sourceTree) {
   });
 }
 
+function T(name, tree?) {
+  if (arguments.length < 2) return name;
+  return stew.log(tree, { output: 'tree', label: name });
+}
+
 function getHtmlSourcesTree() {
   // Replace $SCRIPT$ markers in HTML files.
-  var htmlSrcsTree = stew.map(modulesFunnel(['*/src/**/*.html']), replaceScriptTagInHtml);
+  var htmlSrcsTree = T(map(modulesFunnel(['*/src/**/*.html']), replaceScriptTagInHtml));
   // Copy a url_params_to_form.js for each benchmark html file.
-  var urlParamsToFormTree = new MultiCopy('', {
+  var urlParamsToFormTree = T(new MultiCopy('', {
     srcPath: 'tools/build/snippets/url_params_to_form.js',
     targetPatterns: ['modules/benchmarks*/src/*', 'modules/benchmarks*/src/*/*'],
-  });
-  urlParamsToFormTree = stew.rename(urlParamsToFormTree, stripModulePrefix);
-  return mergeTrees([htmlSrcsTree, urlParamsToFormTree]);
+  }));
+  urlParamsToFormTree = T('Renamed urlParamsToFormTree', stew.rename(urlParamsToFormTree, stripModulePrefix));
+  return T('merged getHtmlSources()', mergeTrees([htmlSrcsTree, urlParamsToFormTree]));
 }
 
 
@@ -142,10 +148,10 @@ function getDocsTree() {
 
 module.exports = function makeDartTree(options: AngularBuilderOptions) {
   var dartSources = dartfmt(getSourceTree(), {dartSDK: options.dartSDK, logs: options.logs});
-  var sourceTree = mergeTrees([dartSources, getHtmlSourcesTree()]);
-  sourceTree = fixDartFolderLayout(sourceTree);
+  var sourceTree = T(mergeTrees([dartSources, T('getHtmlSourcesTree()', getHtmlSourcesTree())]));
+  sourceTree = T('fixDartFolderLayout()', fixDartFolderLayout(sourceTree));
 
-  var dartTree = mergeTrees([sourceTree, getTemplatedPubspecsTree(), getDocsTree()]);
+  var dartTree = T('dartTree', mergeTrees([sourceTree, getTemplatedPubspecsTree(), getDocsTree()]));
 
   return destCopy(dartTree, options.outputPath);
 };

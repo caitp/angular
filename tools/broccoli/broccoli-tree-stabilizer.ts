@@ -2,6 +2,7 @@
 /// <reference path="../typings/node/node.d.ts" />
 
 import fs = require('fs');
+import fse = require('fs-extra');
 let symlinkOrCopy = require('symlink-or-copy');
 
 
@@ -28,11 +29,48 @@ class TreeStabilizer implements BroccoliTree {
 
 
   rebuild() {
-    fs.rmdirSync(this.outputPath);
+    let isDirectory = (filepath) => {
+      try {
+        let lstat = fs.lstatSync(filepath);
+        if (lstat.isDirectory()) return true;
+        let stat = fs.statSync(filepath);
+        if (stat.isDirectory()) return true;
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+      }
+      return false;
+    };
+    let isLink = (filepath) => {
+      try {
+        return fs.lstatSync(filepath).isSymbolicLink();
+      } catch (e) {}
+      return false;
+    };
+    if (isLink(this.inputPath)) {
+      console.log(`[TreeStabilizer]
+  ${this.inputPath}
+    -> ${fs.realpathSync(this.inputPath)}
+`);
+    }
+    if (!isDirectory(this.inputPath)) {
+      console.log(`[TreeStabilizer]
+  ${this.inputPath} is not a directory
+`);
+    } else {
+    console.log(`[TreeStabilizer]
+  removing ${this.outputPath}
+`);
+    }
+    fse.removeSync(this.outputPath);
 
     // TODO: investigate if we can use rename the directory instead to improve performance on
     // Windows
+    console.log(`[TreeStabilizer] Copying
+  ${this.inputPath}
+    -> ${this.outputPath}
+`);
     symlinkOrCopy.sync(this.inputPath, this.outputPath);
+    //fse.copySync(this.inputPath, this.outputPath);
   }
 
 
